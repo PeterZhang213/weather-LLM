@@ -1,0 +1,68 @@
+# Simple baseline system for weather questions with advice
+
+# Predefined weather data for cities in England with time and date
+weather_data = {
+    "London": {"temperature": 15, "condition": "Cloudy", "time": "15:00, 19/Nov/2024"},
+    "Manchester": {"temperature": 12, "condition": "Rainy", "time": "14:45, 19/Nov/2024"},
+    "Birmingham": {"temperature": 14, "condition": "Sunny", "time": "14:50, 19/Nov/2024"},
+    "Liverpool": {"temperature": 13, "condition": "Windy", "time": "14:55, 19/Nov/2024"},
+    "Bristol": {"temperature": 16, "condition": "Cloudy", "time": "15:10, 19/Nov/2024"},
+    "Leeds": {"temperature": 10, "condition": "Partly cloudy", "time": "15:05, 19/Nov/2024"},
+    "York": {"temperature": 11, "condition": "Rainy", "time": "15:15, 19/Nov/2024"},
+    "Newcastle": {"temperature": 9, "condition": "Foggy", "time": "14:40, 19/Nov/2024"},
+    "Cambridge": {"temperature": 17, "condition": "Sunny", "time": "15:20, 19/Nov/2024"},
+    "Oxford": {"temperature": 16, "condition": "Sunny", "time": "15:25, 19/Nov/2024"},
+    "Durham": {"temperature": 8, "condition": "Cold and cloudy", "time": "15:30, 19/Nov/2024"},
+    "Southampton": {"temperature": 18, "condition": "Sunny", "time": "15:35, 19/Nov/2024"},
+    "Exeter": {"temperature": 15, "condition": "Partly sunny", "time": "15:40, 19/Nov/2024"},
+    "Brighton": {"temperature": 14, "condition": "Windy", "time": "15:45, 19/Nov/2024"},
+    "Nottingham": {"temperature": 12, "condition": "Cloudy", "time": "15:50, 19/Nov/2024"},
+}
+
+# Function to provide advice based on weather conditions
+def get_weather_advice(condition):
+    advice = {
+        "rainy": "Don't forget to bring an umbrella!",
+        "sunny": "It's sunny, so wearing a T-shirt and shorts should be comfortable.",
+        "windy": "It's windy, so consider bringing a jacket or coat.",
+        "cloudy": "It might feel cooler, so bring a light jacket just in case.",
+        "foggy": "Be cautious if you're driving, and dress warmly.",
+        "partly cloudy": "It could go either way, so dress in layers."
+    }
+    return advice.get(condition.lower(), "Stay prepared for changing weather!")
+
+# Function to process user questions
+def get_weather_response(question):
+    question = question.lower()
+    
+    # Check if the question includes only a city name
+    for city in weather_data:
+        if city.lower() in question:
+            data = weather_data[city]
+            temp = data["temperature"]
+            condition = data["condition"]
+            time = data["time"]
+            advice = get_weather_advice(condition)
+            return (
+                f"The temperature in {city} is {temp}°C.\n"
+                f"The weather condition is {condition}.\n"
+                f"Last updated: {time}.\n"
+                f"Advice: {advice}"
+            )
+    
+    # Default response for unrecognized input
+    return "Sorry, I cannot answer that. Please ask about the temperature or weather condition in a specific city."
+
+# Interactive loop to test the baseline system
+print("Weather Bot (England Cities):  Good day mate! Ask me weather-related questions, you can ask time, temperature, conditions and even wearing advice! " )
+print("But I am sorry that I only know about the English Cities since I am a English AI :). " )
+print("Type 'exit' to quit.")
+
+while True:
+    user_input = input("You: ")
+    if user_input.lower() == "exit":
+        print("Goodbye!")
+        break
+    
+    response = get_weather_response(user_input)
+    print(f"Bot: {response}")
