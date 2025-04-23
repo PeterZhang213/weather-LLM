@@ -1,23 +1,24 @@
 # Simple baseline system for weather questions with advice
 
-# Predefined weather data for cities in England with time and date
+# Predefined weather data for cities in England with time and date 
 weather_data = {
-    "London": {"temperature": 15, "condition": "Cloudy", "time": "15:00, 19/Nov/2024"},
-    "Manchester": {"temperature": 12, "condition": "Rainy", "time": "14:45, 19/Nov/2024"},
-    "Birmingham": {"temperature": 14, "condition": "Sunny", "time": "14:50, 19/Nov/2024"},
-    "Liverpool": {"temperature": 13, "condition": "Windy", "time": "14:55, 19/Nov/2024"},
-    "Bristol": {"temperature": 16, "condition": "Cloudy", "time": "15:10, 19/Nov/2024"},
-    "Leeds": {"temperature": 10, "condition": "Partly cloudy", "time": "15:05, 19/Nov/2024"},
-    "York": {"temperature": 11, "condition": "Rainy", "time": "15:15, 19/Nov/2024"},
-    "Newcastle": {"temperature": 9, "condition": "Foggy", "time": "14:40, 19/Nov/2024"},
-    "Cambridge": {"temperature": 17, "condition": "Sunny", "time": "15:20, 19/Nov/2024"},
-    "Oxford": {"temperature": 16, "condition": "Sunny", "time": "15:25, 19/Nov/2024"},
-    "Durham": {"temperature": 8, "condition": "Cold and cloudy", "time": "15:30, 19/Nov/2024"},
-    "Southampton": {"temperature": 18, "condition": "Sunny", "time": "15:35, 19/Nov/2024"},
-    "Exeter": {"temperature": 15, "condition": "Partly sunny", "time": "15:40, 19/Nov/2024"},
-    "Brighton": {"temperature": 14, "condition": "Windy", "time": "15:45, 19/Nov/2024"},
-    "Nottingham": {"temperature": 12, "condition": "Cloudy", "time": "15:50, 19/Nov/2024"},
+    "London": {"temperature": 18, "condition": "Partly cloudy", "time": "15:00, 23/Apr/2025"},
+    "Manchester": {"temperature": 16, "condition": "Light rain", "time": "14:45, 23/Apr/2025"},
+    "Birmingham": {"temperature": 17, "condition": "Sunny", "time": "14:50, 23/Apr/2025"},
+    "Liverpool": {"temperature": 15, "condition": "Cloudy", "time": "14:55, 23/Apr/2025"},
+    "Bristol": {"temperature": 19, "condition": "Mostly sunny", "time": "15:10, 23/Apr/2025"},
+    "Leeds": {"temperature": 14, "condition": "Overcast", "time": "15:05, 23/Apr/2025"},
+    "York": {"temperature": 13, "condition": "Light showers", "time": "15:15, 23/Apr/2025"},
+    "Newcastle": {"temperature": 12, "condition": "Foggy", "time": "14:40, 23/Apr/2025"},
+    "Cambridge": {"temperature": 20, "condition": "Sunny", "time": "15:20, 23/Apr/2025"},
+    "Oxford": {"temperature": 19, "condition": "Sunny", "time": "15:25, 23/Apr/2025"},
+    "Durham": {"temperature": 11, "condition": "Chilly and cloudy", "time": "15:30, 23/Apr/2025"},
+    "Southampton": {"temperature": 21, "condition": "Sunny", "time": "15:35, 23/Apr/2025"},
+    "Exeter": {"temperature": 18, "condition": "Partly sunny", "time": "15:40, 23/Apr/2025"},
+    "Brighton": {"temperature": 17, "condition": "Windy", "time": "15:45, 23/Apr/2025"},
+    "Nottingham": {"temperature": 15, "condition": "Cloudy", "time": "15:50, 23/Apr/2025"},
 }
+
 
 # Function to provide advice based on weather conditions
 def get_weather_advice(condition):
