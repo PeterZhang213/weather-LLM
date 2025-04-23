@@ -1,0 +1,248 @@
+# Install necessary packages
+!pip install transformers torch accelerate colorama --quiet
+
+# Import necessary libraries
+import requests
+import gc  # For garbage collection
+from colorama import Fore, Style
+
+# Hugging Face API details
+API_URL = "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-1B"
+headers = {"Authorization": "Bearer hf_XXXXXXXXXXXX"}
+
+# Updated example data for supported cities (mock database)
+city_weather_data = {
+
+    "Madrid": "22°C, clear skies",
+    "Norway": "5°C, general weather conditions",
+    "Brisbane": "30°C, possible cyclone warning",
+    "Dallas": "28°C, tornado warning in effect",
+    "Rome": "25°C, changing weather over next 3 days",
+    "Houston": "32°C, air quality alert",
+    "Helsinki": "-5°C, cold winter conditions",
+    "Rio de Janeiro": "28°C, occasional rain and good beach weather",
+    "Toronto": "-5°C, cold with occasional snow",
+    "Caribbean": "28°C, possible hurricane expected",
+    "Midwest": "10°C, tornado warnings in effect",
+    "Indian coast": "27°C, cyclone approaching",
+    "Philippines": "29°C, recent typhoon activity",
+    "Southwestern United States": "35°C, heat advisory issued",
+    "Venice": "18°C, flood warnings today",
+    "Iceland": "-2°C, volcanic ash affecting weather",
+    "California": "26°C, wildfire smoke affecting air quality",
+    "Canada": "-10°C, blizzards expected",
+    "Sahara Desert": "40°C, occasional dust storms",
+    "Seattle": "15°C, compared with Portland's 14°C",
+    "Portland": "14°C, compared with Seattle's 15°C",
+    "Athens": "29°C, sunny with high UV index",
+    "Istanbul": "22°C, partly cloudy with some sunshine",
+    "Seoul": "10°C, changing weather throughout the day",
+    "New Orleans": "27°C, high dew point, Mardi Gras parade expected",
+    "Vancouver": "12°C, wildfire smoke reducing visibility",
+    "Auckland": "18°C, sunrise at 6:45 AM",
+    "Santiago": "20°C, sunset at 7:30 PM",
+    "Delhi": "15°C, foggy conditions expected in December",
+    "Hong Kong": "30°C, monsoon season, possible rain during Dragon Boat Festival",
+    "Shanghai": "25°C, cloudy, possible rain during Lantern Festival",
+    "São Paulo": "26°C, moderate air pollution, carbon monoxide levels rising",
+    "Alaska": "-8°C, auroras expected this week",
+    "Swiss Alps": "5°C, suitable for hiking",
+    "New York": "18°C, good weather for a picnic in Central Park",
+    "Cappadocia": "20°C, clear skies, good for hot air balloon rides",
+    "Aspen": "3°C, rain affecting skiing conditions",
+    "Yellowstone": "8°C, thunderstorms possible during camping",
+    "Barcelona": "23°C, sunny and suitable for city tours",
+    "Whistler": "-3°C, snow expected for snowboarding",
+    "Gulf of Mexico": "28°C, possible waterspouts forming",
+    "Kansas": "24°C, reports of tornado sightings",
+    "Sydney": "27°C, warm and clear for New Year's Eve",
+    "Munich": "10°C, slight chance of snow during Oktoberfest",
+    "Perth": "30°C, high UV index compared to Brisbane",
+    "New York City": "8°C, light rain",
+    "Los Angeles": "20°C, sunny",
+    "Tokyo": "10°C, cloudy",
+    "Paris": "12°C, partly cloudy",
+    "Dubai": "35°C, humid",
+    "Sydney": "18°C, windy",
+    "London": "15°C, overcast",
+    "Beijing": "5°C, low air pressure",
+    "San Francisco": "13°C, foggy",
+    "Miami": "28°C, high dew point",
+    "Jakarta": "32°C, thunderstorms",
+    "Moscow": "-5°C, snowing",
+    "Bangkok": "34°C, high UV index",
+    "Toronto": "-5°C, cold and snowy",
+    "Seoul": "7°C, chilly",
+    "Rome": "25°C, partly cloudy",
+    "Houston": "32°C, high humidity and thunderstorms",
+    "Rio De Janeiro": "28°C, humid with occasional rain",
+    "Delhi": "35°C, high pollution and dry heat",
+    "Shanghai": "22°C, light smog with mild temperatures",
+    "São Paulo": "26°C, cloudy with occasional showers",
+    "Athens": "29°C, sunny and dry",
+    "Madrid": "22°C, clear skies"
+}
+
+# Function to query the Llama model
+def query_llama(payload):
+    try:
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=10)  # Set timeout to 10 seconds
+        response.raise_for_status()  # Raise an error if request failed
+        return response.json()
+    except requests.exceptions.Timeout:
+        return {"generated_text": "I'm sorry, but my response took too long. Try again later."}
+    except requests.exceptions.RequestException as e:
+        return {"generated_text": f"An error occurred: {e}"}
+
+# Function to extract the city name from a query (Fixes multi-word cities)
+def extract_city_name(query):
+    """
+    Extracts the city name from the query, supporting multi-word city names.
+
+    Args:
+        query (str): The user input query.
+
+    Returns:
+        str or None: The identified city name, or None if not found.
+    """
+    query_lower = query.lower()
+
+    # Sort city names by length (longer first) to avoid partial matches (e.g., "York" in "New York")
+    sorted_cities = sorted(city_weather_data.keys(), key=lambda x: -len(x))
+
+    for city in sorted_cities:
+        if city.lower() in query_lower:
+            return city  # Return the correct city match
+
+    return None  # No city found
+
+
+# Function to identify question type
+def identify_question_type(query):
+    weather_keywords = [
+        "weather", "temperature", "forecast", "rain", "sunny", "cloudy", "windy",
+        "cold", "hot", "storm", "humidity", "snow", "fog", "clear skies", "tonight"
+    ]
+    return "weather" if any(word in query.lower() for word in weather_keywords) else "general"
+
+# **Improved Yes/No Response Function (Now Handles "right now" queries)**
+def get_yes_no_response(query, weather_info):
+    query_lower = query.lower()
+    weather_lower = weather_info.lower()
+
+    # Keywords and their corresponding weather conditions
+    conditions = {
+        "clear skies": "clear skies",
+        "rain": "rain",
+        "cold": "°c",
+        "hot": "°c",
+        "snow": "snow",
+        "fog": "fog",
+        "sunny": "sunny",
+        "windy": "windy",
+        "humid": "humid",
+        "cyclone": "cyclone",
+        "tornado": "tornado",
+        "hurricane": "hurricane",
+    }
+
+    # Detect time-based keywords
+    time_keywords = ["this week", "next week", "in a few days", "upcoming days"]
+
+    # If a time-related keyword is in the query, prepend the disclaimer
+    time_related = any(word in query_lower for word in time_keywords)
+    disclaimer = "Sry, but according to my database, I can only predict that... "
+
+    for keyword, weather_condition in conditions.items():
+        if keyword in query_lower:
+            if weather_condition in weather_lower:
+                return (disclaimer if time_related else "") + "Yes"
+            elif keyword in ["cold", "hot"]:  # Special case for temperature
+                try:
+                    temp = int(weather_info.split("°C")[0])
+                    if keyword == "cold":
+                        return (disclaimer if time_related else "") + ("Yes" if temp < 15 else "No")
+                    if keyword == "hot":
+                        return (disclaimer if time_related else "") + ("Yes" if temp > 25 else "No")
+                except ValueError:
+                    return (disclaimer if time_related else "") + "It depends"
+            return (disclaimer if time_related else "") + "No"
+
+    # If the query has time-based keywords, but no specific condition matches
+    if time_related:
+        return disclaimer + "It depends"
+
+    return "It depends"
+
+# Improved Response Generation
+def generate_response(user_query):
+    question_type = identify_question_type(user_query)
+
+    if question_type == "weather":
+        city_name = extract_city_name(user_query)
+        if city_name:
+            weather_info = city_weather_data.get(city_name)
+            if weather_info:
+                yes_no = get_yes_no_response(user_query, weather_info)
+                return f"{yes_no}, the current weather in {city_name} is {weather_info}."
+            else:
+                payload = {"inputs": f"Do you have weather information for {city_name}?"}
+                print("Querying the model for additional information...")
+                model_response = query_llama(payload)
+
+                # ✅ Extract text properly from dictionary
+                return model_response.get("generated_text", "Sorry, I don't know about it.")
+
+        return "Could you specify a city for the weather information?"
+
+    # Handle general (non-weather) questions
+    payload = {"inputs": user_query}
+    print("Querying the model for a general response...")
+    model_response = query_llama(payload)
+
+    # ✅ Extract generated_text properly
+    generated_text = model_response.get("generated_text", "").strip()
+
+    if not generated_text:
+        return "I'm sorry, but I couldn't generate a response at the moment. Try again later."
+
+    return generated_text
+
+
+    # Handle general (non-weather) questions
+    payload = {"inputs": user_query}
+    print("Querying the model for a general response...")
+    model_response = query_llama(payload)
+    return model_response.get("generated_text", "I'm not sure, but I can try to help!")
+
+# Function to twist a sentence
+def twist_sentence(sentence):
+    return sentence[::-1]
+
+# Function to clean up memory
+def clean_memory():
+    print("Erasing memory for space...")
+    gc.collect()
+    print("Memory cleanup complete.")
+
+# Interactive query system with "twist" functionality
+if __name__ == "__main__":
+    print("Weather baseline system with twist function (powered by Llama 3.2 1B)")
+    print("You can ask about the weather in a city, e.g., 'London'.")
+    print('Also, you can let your sentence be twisted. For example, twist: "hello".\n')
+
+    while True:
+        user_input = input("Enter your query (or type 'exit' to quit): ").strip()
+
+        if user_input.lower() == "exit":
+            print("Goodbye!")
+            clean_memory()
+            break
+
+        if user_input.lower().startswith("twist:"):
+            sentence_to_twist = user_input[6:].strip()
+            response = twist_sentence(sentence_to_twist)
+        else:
+            response = generate_response(user_input)
+
+        print(f"{Fore.RED}Response:{Style.RESET_ALL} {response}\n")
