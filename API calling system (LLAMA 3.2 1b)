@@ -1,0 +1,126 @@
+import requests
+import re
+
+# WeatherAPI Key & Endpoint
+API_KEY = "6e94eb2b9837487481d184826250401"
+WEATHER_API_URL = "http://api.weatherapi.com/v1/forecast.json"
+
+# Hugging Face Llama 3.2 API Config
+LLAMA_API_URL = "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-1B"
+HEADERS = {
+    "Authorization": "Bearer hf_XXXXXXXXXXX",
+    "Content-Type": "application/json"
+}
+
+def get_forecast(city):
+    """Fetch weather forecast for a given city."""
+    params = {"key": API_KEY, "q": city, "days": 1, "aqi": "no", "alerts": "no"}
+    response = requests.get(WEATHER_API_URL, params=params)
+
+    if response.status_code == 200:
+        return response.json()
+    else:
+        return {"error": f"Failed to fetch forecast. {response.text}"}
+
+def query_llama(prompt):
+    """Query Llama API and return a generated response."""
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 50,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "stop": ["\n"]
+        }
+    }
+    response = requests.post(LLAMA_API_URL, headers=HEADERS, json=payload)
+
+    if response.status_code == 200:
+        try:
+            llama_output = response.json()
+            if isinstance(llama_output, dict) and "generated_text" in llama_output:
+                return llama_output["generated_text"].strip()
+            elif isinstance(llama_output, list) and len(llama_output) > 0 and "generated_text" in llama_output[0]:
+                return llama_output[0]["generated_text"].strip()
+        except Exception:
+            return None
+    return None  # Return None if Llama API fails
+
+def extract_city(user_input):
+    """Extracts a valid city name from user input."""
+    city_pattern = re.compile(r"\b(?:in|to|at)?\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\b")
+    matches = city_pattern.findall(user_input)
+    
+    if matches:
+        return matches[-1]  # Return the last detected city (more reliable)
+    return None
+
+def generate_response(city, forecast_data, user_query):
+    """Generate a natural language response based on the weather data."""
+    try:
+        current_weather = forecast_data["current"]
+        condition = current_weather["condition"]["text"]
+        temp_c = current_weather["temp_c"]
+
+        today_forecast = forecast_data["forecast"]["forecastday"][0]["day"]
+        rain_chance = today_forecast.get("daily_chance_of_rain", 0)
+
+        # Decide if an umbrella is needed
+        if rain_chance > 50:
+            advice = f"Yes, you should bring an umbrella. There's a {rain_chance}% chance of rain in {city} today."
+        else:
+            advice = f"No need to bring an umbrella. The rain probability in {city} today is just {rain_chance}%."
+
+        # Create prompt for Llama
+        prompt = f"""
+        The user asked: "{user_query}"
+
+        Weather details:
+        - Location: {city}
+        - Condition: {condition}, {temp_c}°C
+        - Rain chance: {rain_chance}%
+
+        Provide a **natural, friendly response** answering the question directly.
+        Do NOT repeat the question.
+        Example format: "{advice}"
+        """
+        return prompt.strip(), advice  # Return both prompt and fallback response
+
+    except (KeyError, IndexError):
+        return None, "I couldn't retrieve weather details for that city."
+
+# Continuous Interaction Loop
+if __name__ == "__main__":
+    print("🌍 Welcome to the AI Weather Chatbot! Type 'exit' to quit.\n")
+
+    while True:
+        user_query = input("Ask about the weather or hiking (or type 'exit' to quit): ").strip()
+        
+        if user_query.lower() == "exit":
+            print("👋 Goodbye!")
+            break
+
+        city = extract_city(user_query)
+        
+        if not city:
+            print("⚠️ I couldn't detect a city in your question. Please try again.")
+            continue
+
+        forecast_data = get_forecast(city)
+
+        if "error" in forecast_data:
+            print("⚠️", forecast_data["error"])
+            continue
+
+        # Generate Llama Prompt
+        llama_prompt, fallback_response = generate_response(city, forecast_data, user_query)
+
+        # Get AI response from Llama
+        ai_response = query_llama(llama_prompt) if llama_prompt else None
+
+        # If Llama fails, use fallback response
+        if not ai_response or "The user asked" in ai_response:
+            ai_response = fallback_response
+
+        print("\n🤖 Chatbot says:", ai_response)
+        print("\n🔄 Ask another question or type 'exit' to quit.\n")
