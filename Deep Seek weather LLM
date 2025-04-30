@@ -1,0 +1,75 @@
+# Install dependencies (run once in Jupyter)
+# !pip install transformers accelerate requests
+
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Suppress parallelism warning
+
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+import requests
+import re
+
+# ✅ Load DeepSeek-R1 model and tokenizer (compatible with CPU/GPU)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", trust_remote_code=True).to(device)
+
+# ✅ WeatherAPI info
+API_KEY = "XXXXXX"
+WEATHER_API_URL = "http://api.weatherapi.com/v1/forecast.json"
+
+def get_weather_info(city):
+    try:
+        params = {
+            "key": API_KEY,
+            "q": city,
+            "days": 1,
+            "aqi": "no",
+            "alerts": "no"
+        }
+        response = requests.get(WEATHER_API_URL, params=params)
+        data = response.json()
+        temp_c = data["current"]["temp_c"]
+        condition = data["current"]["condition"]["text"]
+        return temp_c, condition
+    except Exception as e:
+        print("Weather API Error:", e)
+        return 22, "clear"  # fallback values
+
+def generate_prompt(city, question):
+    temp_c, condition = get_weather_info(city)
+    return (
+        f"You are a helpful weather assistant.\n"
+        f"Current weather in {city}: {temp_c}°C and {condition.lower()}.\n"
+        f"User asks: \"{question}\"\n"
+        f"Please think carefully and enclose your final advice between <answer> and </answer>."
+    )
+
+def extract_answer(text):
+    match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
+    return match.group(1).strip() if match else "No answer found."
+
+# ✅ User input
+city = "London"
+question = "Should I wear a scarf?"
+
+# ✅ Prompt and inference
+prompt = generate_prompt(city, question)
+print("Prompt:\n", prompt)
+
+inputs = tokenizer(prompt, return_tensors="pt").to(device)
+
+with torch.no_grad():
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=300,
+        do_sample=True,
+        temperature=0.7
+    )
+
+generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+# ✅ Display results
+print("\nGenerated Text:\n", generated_text)
+print("\nExtracted Answer:\n", extract_answer(generated_text))
