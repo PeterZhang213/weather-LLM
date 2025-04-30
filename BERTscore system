@@ -1,0 +1,58 @@
+
+
+import subprocess
+import sys
+import os
+import pandas as pd
+from bert_score import score
+
+
+
+# Function to install missing packages
+def install_package(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+# Ensure required packages are installed
+try:
+    import ipywidgets as widgets
+except ImportError:
+    install_package("ipywidgets")
+
+# Function to compute BERTScore for a given answer
+def compute_bertscore(model_answer, reference_answer):
+    P, R, F1 = score([model_answer], [reference_answer], model_type="microsoft/deberta-xlarge-mnli", lang="en")
+    return P.tolist()[0], R.tolist()[0], F1.tolist()[0]
+
+# Main function for interactive Q&A and evaluation
+def interactive_qa():
+    print("\n🚀 Welcome to BERTScore Evaluation!")
+    print("You will provide the formal answer and two model answers (A & B).")
+    print("Type 'exit' at any point to stop.\n")
+
+    while True:
+        user_question = input("❓ Enter the question (or type 'exit' to stop): ").strip()
+        if user_question.lower() == "exit":
+            break
+
+        formal_answer = input("📌 Enter the **formal answer** (expected answer): ").strip()
+        answer_A = input("🅰 Enter Model Answer A: ").strip()
+        answer_B = input("🅱 Enter Model Answer B: ").strip()
+
+        # Compute BERTScore for A and B
+        P_A, R_A, F1_A = compute_bertscore(answer_A, formal_answer)
+        P_B, R_B, F1_B = compute_bertscore(answer_B, formal_answer)
+
+        # Display results
+        print("\n📊 **BERTScore Results**")
+        print(f"❓ **Question:** {user_question}")
+        print(f"✅ **Formal Answer:** {formal_answer}\n")
+
+        print(f"🅰 **Model Answer A:** {answer_A}")
+        print(f"   🔹 Precision: {P_A:.4f}, Recall: {R_A:.4f}, F1 Score: {F1_A:.4f}\n")
+
+        print(f"🅱 **Model Answer B:** {answer_B}")
+        print(f"   🔹 Precision: {P_B:.4f}, Recall: {R_B:.4f}, F1 Score: {F1_B:.4f}\n")
+
+# Run the interactive evaluation
+if __name__ == "__main__":
+    interactive_qa()
