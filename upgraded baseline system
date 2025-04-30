@@ -1,0 +1,216 @@
+import re
+import gc
+import requests
+
+# Hugging Face LLaMA API (used as fallback)
+API_URL = "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-1B"
+headers = {"Authorization": "Bearer hf_XXXXXXX"}
+
+# Mock weather data (editable)
+city_weather_data = {
+    "London": "10°C, sunny", "Beijing": "5°C, low air pressure", "Shanghai": "22°C, light smog",
+    "Tokyo": "12°C, cloudy", "Los Angeles": "20°C, sunny", "New York City": "8°C, light rain",
+    "Guangzhou": "30°C, humid", "Paris": "12°C, partly cloudy"
+}
+
+# Chinese aliases for cities
+city_aliases_zh = {
+    "伦敦": "London", "北京": "Beijing", "上海": "Shanghai", "东京": "Tokyo",
+    "洛杉矶": "Los Angeles", "纽约": "New York City", "广州": "Guangzhou", "巴黎": "Paris"
+}
+
+# Condition translations for Chinese output
+condition_translation_zh = {
+    "sunny": "晴", "clear": "晴朗", "cloudy": "多云", "partly cloudy": "局部多云",
+    "rain": "雨", "light rain": "小雨", "heavy rain": "大雨", "fog": "雾",
+    "overcast": "阴天", "snow": "雪", "windy": "有风", "humid": "潮湿",
+    "light smog": "轻度雾霾", "low air pressure": "气压低"
+}
+
+def detect_language(text):
+    return "zh" if re.search(r'[\u4e00-\u9fff]', text) else "en"
+
+def extract_city_name(query, lang):
+    if lang == "zh":
+        for zh, en in city_aliases_zh.items():
+            if zh in query:
+                return en, zh
+    else:
+        for en in city_weather_data:
+            if en.lower() in query.lower():
+                return en, en
+    return None, None
+
+def identify_weather_question(text):
+    keywords = ["weather", "temperature", "forecast", "rain", "sunny", "cloudy",
+                "cold", "hot", "storm", "humidity", "fog", "clear",
+                "天气", "温度", "下雨", "晴", "湿", "风"]
+    return any(k in text.lower() for k in keywords)
+
+def get_yes_no_weather_response(query, weather_info, lang):
+    query = query.lower()
+    weather_info = weather_info.lower()
+    if lang == "zh":
+        if "晴" in query or "出太阳" in query:
+            return "是的，天气晴朗。" if "sunny" in weather_info or "clear" in weather_info else "不是的，天气不晴。"
+        elif "下雨" in query or "雨" in query:
+            return "是的，可能会下雨。" if "rain" in weather_info else "不会下雨。"
+    else:
+        if "sunny" in query:
+            return "Yes, it is sunny." if "sunny" in weather_info or "clear" in weather_info else "No, it is not sunny."
+        elif "rain" in query:
+            return "Yes, it might rain." if "rain" in weather_info else "No, it won't rain."
+    return "我无法确定。" if lang == "zh" else "I cannot determine for sure."
+
+def translate_condition_for_zh(weather_info):
+    lower_info = weather_info.lower()
+    for eng, zh in condition_translation_zh.items():
+        if eng in lower_info:
+            return lower_info.replace(eng, zh)
+    return weather_info
+
+def recommend_shoes(city, lang):
+    weather_info = city_weather_data.get(city)
+    if not weather_info:
+        return "抱歉，无法获取天气数据。" if lang == "zh" else "Sorry, no weather data available."
+
+    try:
+        temp = int(weather_info.split("°C")[0])
+    except ValueError:
+        return "无法识别温度数据。" if lang == "zh" else "Temperature data is unclear."
+
+    condition = weather_info.lower()
+    raining = "rain" in condition or "湿" in condition or "monsoon" in condition
+
+    if lang == "zh":
+        if raining:
+            return f"{city}下雨，建议穿靴子。现在天气是{translate_condition_for_zh(weather_info)}。"
+        elif temp > 28:
+            return f"{city}天气炎热，建议穿凉鞋。现在天气是{translate_condition_for_zh(weather_info)}。"
+        elif temp < 10:
+            return f"{city}天气寒冷，建议穿靴子。现在天气是{translate_condition_for_zh(weather_info)}。"
+        else:
+            return f"{city}天气适中，建议穿运动鞋。现在天气是{translate_condition_for_zh(weather_info)}。"
+    else:
+        if raining:
+            return f"It might rain in {city}, better wear boots. The weather is {weather_info}."
+        elif temp > 28:
+            return f"It's hot in {city}, sandals are recommended. The weather is {weather_info}."
+        elif temp < 10:
+            return f"It's cold in {city}, boots are best. The weather is {weather_info}."
+        else:
+            return f"The weather in {city} is moderate, sneakers are a good choice. It's {weather_info}."
+
+def compare_sport_activity(city1, city2, lang):
+    info1 = city_weather_data.get(city1)
+    info2 = city_weather_data.get(city2)
+
+    if not info1 or not info2:
+        return "数据不足，无法比较。" if lang == "zh" else "Not enough data to compare."
+
+    try:
+        temp1 = int(info1.split("°C")[0])
+        temp2 = int(info2.split("°C")[0])
+    except:
+        return "温度数据无法识别。" if lang == "zh" else "Temperature data unclear."
+
+    def is_sport_weather(temp): return 10 <= temp <= 25
+
+    if is_sport_weather(temp1) and not is_sport_weather(temp2):
+        better = city1
+    elif is_sport_weather(temp2) and not is_sport_weather(temp1):
+        better = city2
+    else:
+        better = city1 if temp1 <= temp2 else city2
+
+    return f"{better}的天气更适合运动。" if lang == "zh" else f"{better} has better weather for sports activities."
+
+def query_llama_model(text):
+    payload = {"inputs": text, "parameters": {"max_new_tokens": 50, "temperature": 0.5}}
+    try:
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=10)
+        data = response.json()
+        if isinstance(data, list):
+            return data[0].get("generated_text", "")
+        return data.get("generated_text", "")
+    except:
+        return "Model request failed."
+
+def generate_response(user_query):
+    lang = detect_language(user_query)
+    city, city_display = extract_city_name(user_query, lang)
+
+    # Sport activity comparison
+    if ("适合运动" in user_query or "better for sports" in user_query.lower()) and "和" in user_query:
+        found_cities = [alias for alias in city_aliases_zh if alias in user_query]
+        if len(found_cities) >= 2:
+            c1 = city_aliases_zh[found_cities[0]]
+            c2 = city_aliases_zh[found_cities[1]]
+            return compare_sport_activity(c1, c2, lang)
+
+    # Shoe recommendation
+    if "穿什么鞋" in user_query or "which shoes" in user_query.lower():
+        if city:
+            return recommend_shoes(city, lang)
+        else:
+            return "请告诉我城市。" if lang == "zh" else "Please specify the city."
+
+    # Hiking questions
+    if "登山" in user_query or "hiking" in user_query.lower():
+        if city:
+            weather_info = city_weather_data.get(city, "")
+            if not weather_info:
+                return "暂无天气信息。" if lang == "zh" else "Sorry, no weather info available."
+
+            try:
+                temp = int(weather_info.split("°C")[0])
+            except:
+                temp = None
+
+            good_conditions = ["sunny", "clear", "partly"]
+            is_good = any(k in weather_info.lower() for k in good_conditions) and temp and 10 <= temp <= 25
+            translated_weather = translate_condition_for_zh(weather_info)
+
+            if lang == "zh":
+                if is_good:
+                    return f"是的，{city_display}的天气适合登山，当前天气是{translated_weather}。"
+                else:
+                    return f"不建议在{city_display}登山，当前天气是{translated_weather}。"
+            else:
+                if is_good:
+                    return f"Yes, the weather in {city} is good for hiking. It's currently {weather_info}."
+                else:
+                    return f"No, the weather in {city} is not ideal for hiking. It's {weather_info}."
+        else:
+            return "请告诉我哪个城市。" if lang == "zh" else "Please specify the city."
+
+    # Weather Q&A
+    if identify_weather_question(user_query):
+        if city:
+            weather_info = city_weather_data.get(city, "")
+            if weather_info:
+                yes_no = get_yes_no_weather_response(user_query, weather_info, lang)
+                translated_weather = translate_condition_for_zh(weather_info)
+                if lang == "zh":
+                    return f"{yes_no} {city_display}的天气是{translated_weather}。"
+                else:
+                    return f"{yes_no} The weather in {city} is {weather_info}."
+            else:
+                return "暂无天气信息。" if lang == "zh" else "Sorry, I don't have that info."
+        else:
+            return "无法识别城市。" if lang == "zh" else "City not recognized."
+
+    # Fallback: general question to LLaMA
+    return query_llama_model(user_query)
+
+# Main interaction loop (optional)
+if __name__ == "__main__":
+    print("🌤️ Bilingual Weather Baseline System")
+    while True:
+        user_input = input("\nYour question (or type 'exit'): ").strip()
+        if user_input.lower() in ["exit", "退出"]:
+            print("Goodbye!" if detect_language(user_input) == "en" else "再见！")
+            gc.collect()
+            break
+        reply = generate_response(user_input)
+        print("Answer:", reply)
