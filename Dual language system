@@ -1,0 +1,231 @@
+import requests
+import re
+
+# WeatherAPI Key & Endpoint
+API_KEY = "XXXXXXXX"
+WEATHER_API_URL = "http://api.weatherapi.com/v1/forecast.json"
+
+# Hugging Face Llama 3.2 API Config
+LLAMA_API_URL = "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-1B"
+HEADERS = {
+    "Authorization": "Bearer hf_XXXXXXX",
+    "Content-Type": "application/json"
+}
+
+CITY_TRANSLATIONS = {
+    "伦敦": "London", "北京": "Beijing", "上海": "Shanghai",
+    "广州": "Guangzhou", "深圳": "Shenzhen", "纽约": "New York",
+    "洛杉矶": "Los Angeles", "巴黎": "Paris", "东京": "Tokyo", "柏林": "Berlin",
+    "曼切斯特": "Manchester"
+}
+
+CONDITION_TRANSLATIONS_ZH = {
+    "Sunny": "晴", "Partly cloudy": "多云", "Cloudy": "多云", "Clear": "晴朗",  "Overcast": "阴", "Mist": "薄雾",
+    "Patchy rain possible": "局部可能有雨", "Patchy snow possible": "局部可能有雪",
+    "Patchy sleet possible": "局部可能有雨夹雪", "Patchy freezing drizzle possible": "局部可能有冻毛毛雨",
+    "Thundery outbreaks possible": "可能有雷暴", "Blowing snow": "风雪", "Blizzard": "暴风雪",
+    "Fog": "雾", "Freezing fog": "冻雾", "Patchy light drizzle": "局部小毛毛雨", "Light drizzle": "小毛毛雨",
+    "Freezing drizzle": "冻毛毛雨", "Heavy freezing drizzle": "强冻毛毛雨", "Patchy light rain": "局部小雨",
+    "Light rain": "小雨", "Moderate rain": "中雨", "Heavy rain": "大雨", "Light snow": "小雪",
+    "Moderate snow": "中雪", "Heavy snow": "大雪", "Ice pellets": "冰粒", "Light rain shower": "小阵雨",
+    "Moderate or heavy rain shower": "中到大阵雨", "Torrential rain shower": "暴雨",
+    "Light snow shower": "小阵雪", "Moderate or heavy snow shower": "中到大阵雪",
+    "Light showers of ice pellets": "小冰粒阵雨", "Moderate or heavy showers of ice pellets": "中到大冰粒阵雨",
+    "Patchy light rain with thunder": "局部小雨伴雷", "Moderate or heavy rain with thunder": "中到大雨伴雷",
+    "Patchy light snow with thunder": "局部小雪伴雷", "Moderate or heavy snow with thunder": "中到大雪伴雷"
+}
+
+def detect_language(text):
+    return "zh" if re.search(r'[\u4e00-\u9fff]', text) else "en"
+
+def extract_city(user_input, lang):
+    if lang == "zh":
+        for zh_city, en_city in CITY_TRANSLATIONS.items():
+            if zh_city in user_input:
+                return en_city, zh_city
+        return None, None
+    else:
+        for zh_city, en_city in CITY_TRANSLATIONS.items():
+            if en_city.lower() in user_input.lower():
+                return en_city, en_city
+        matches = re.findall(r"\b([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\b", user_input)
+        if matches:
+            return matches[0], matches[0]
+    return None, None
+
+def get_requested_day(user_input, lang):
+    if lang == "zh":
+        if "明天" in user_input:
+            return "tomorrow"
+        return "today"
+    else:
+        if "tomorrow" in user_input.lower():
+            return "tomorrow"
+        return "today"
+
+def get_forecast(city, is_today):
+    params = {"key": API_KEY, "q": city, "days": 2, "aqi": "no", "alerts": "no"}
+    response = requests.get(WEATHER_API_URL, params=params)
+    if response.status_code == 200:
+        data = response.json()
+        return data["current"] if is_today else data["forecast"]["forecastday"][1]["day"]
+    else:
+        return {"error": f"Failed to fetch forecast. {response.text}"}
+
+def is_yes_no_sunny_question(text):
+    keywords = ["sunny", "be sunny", "晴", "出太阳", "变晴"]
+    yes_no_indicators = ["will", "是否", "会", "变", "是"]
+    return any(k in text.lower() for k in keywords) and any(k in text.lower() for k in yes_no_indicators)
+
+def is_hiking_question(text):
+    return any(word in text.lower() for word in ["登山", "hike", "hiking", "适合爬山", "适合登山"])
+
+def is_kite_flying_question(text):
+    return any(word in text.lower() for word in ["fly a kite", "放风筝", "风筝", "适合放风筝"])
+
+def is_shoe_question(text):
+    return any(word in text.lower() for word in ["穿什么鞋", "靴子还是运动鞋", "shoes", "sneakers or boots", "鞋子", "运动鞋", "boots"])
+
+def handle_yes_no_sunny(forecast_data, lang, is_today):
+    condition = forecast_data["condition"]["text"]
+    temp = forecast_data.get("temp_c" if is_today else "avgtemp_c", "?")
+    is_sunny = "sunny" in condition.lower() or "clear" in condition.lower()
+    if lang == "zh":
+        answer = "是的，会的。" if is_sunny else "不，不会的。"
+        return f"{answer} 温度大约是 {temp}°C。"
+    else:
+        answer = "Yes, it will." if is_sunny else "No, it will not."
+        return f"{answer} The temperature is around {temp}°C."
+
+def handle_hiking_question(forecast_data, lang, day, city_display):
+    condition_en = forecast_data.get("condition", {}).get("text", "")
+    condition_zh = CONDITION_TRANSLATIONS_ZH.get(condition_en, condition_en)
+    temp_c = forecast_data.get("temp_c") or forecast_data.get("avgtemp_c") or "?"
+    try: temp_c = round(float(temp_c), 1)
+    except: temp_c = "?"
+    rain_chance = forecast_data.get("daily_chance_of_rain", 0)
+    good_conditions = ["Sunny", "Clear", "Partly cloudy"]
+    is_good = any(k.lower() in condition_en.lower() for k in good_conditions) and rain_chance < 40
+    if lang == "zh":
+        if is_good:
+            return f"是的，{day}{city_display}的天气很适合登山，因为天气{condition_zh}，温度大约是{temp_c}°C。"
+        else:
+            return f"抱歉，{day}{city_display}的天气不适合登山，因为天气{condition_zh}，可能会下雨或不稳定。"
+    else:
+        if is_good:
+            return f"Yes, the weather in {city_display} {day} is suitable for hiking because it is {condition_en.lower()} with around {temp_c}°C."
+        else:
+            return f"Sorry, the weather in {city_display} {day} is not good for hiking due to {condition_en.lower()} and possible rain."
+
+def handle_kite_flying_question(forecast_data, lang, day, city_display):
+    condition_en = forecast_data.get("condition", {}).get("text", "")
+    condition_zh = CONDITION_TRANSLATIONS_ZH.get(condition_en, condition_en)
+    wind_kph = forecast_data.get("wind_kph", 0)
+    temp_c = forecast_data.get("temp_c") or forecast_data.get("avgtemp_c") or "?"
+    try: temp_c = round(float(temp_c), 1)
+    except: temp_c = "?"
+    is_good = ("sunny" in condition_en.lower() or "clear" in condition_en.lower() or "partly" in condition_en.lower()) and 10 <= wind_kph <= 25
+    if lang == "zh":
+        if is_good:
+            return f"是的，{day}{city_display}的天气适合放风筝，因为天气{condition_zh}，风速为{wind_kph}公里每小时。"
+        else:
+            return f"不建议{day}在{city_display}放风筝，因为天气{condition_zh}，风速为{wind_kph}公里每小时，不太适合。"
+    else:
+        if is_good:
+            return f"Yes, you can fly a kite in {city_display} {day}. The weather is {condition_en.lower()} with wind speed at {wind_kph} kph."
+        else:
+            return f"It's not ideal to fly a kite in {city_display} {day} because it's {condition_en.lower()} with wind speed at {wind_kph} kph."
+
+def handle_shoe_question(forecast_data, lang, day, city_display):
+    condition_en = forecast_data.get("condition", {}).get("text", "")
+    condition_zh = CONDITION_TRANSLATIONS_ZH.get(condition_en, condition_en)
+    temp_c = forecast_data.get("temp_c") or forecast_data.get("avgtemp_c") or "?"
+    try: temp_c = round(float(temp_c), 1)
+    except: temp_c = "?"
+    bad_weather_keywords = ["rain", "fog", "storm", "snow", "shower", "drizzle"]
+    if lang == "zh":
+        if any(k in condition_en.lower() for k in bad_weather_keywords):
+            return f"依我所见，{day}{city_display}的天气不是很好，穿靴子出门会好一点。现在的天气是{condition_zh}，温度大约是{temp_c}°C。"
+        else:
+            return f"{day}{city_display}天气很好，你应该穿运动鞋出门。现在的天气是{condition_zh}，温度大约是{temp_c}°C。"
+    else:
+        if any(k in condition_en.lower() for k in bad_weather_keywords):
+            return f"Based on the weather in {city_display} {day}, it's better to wear boots. It's currently {condition_en.lower()} with about {temp_c}°C."
+        else:
+            return f"The weather in {city_display} {day} is good, you should wear sneakers. It's currently {condition_en.lower()} with about {temp_c}°C."
+
+def query_llama(prompt):
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 50,
+            "temperature": 0.5,
+            "top_p": 0.8,
+            "stop": ["\n"]
+        }
+    }
+    response = requests.post(LLAMA_API_URL, headers=HEADERS, json=payload)
+    if response.status_code == 200:
+        try:
+            result = response.json()
+            if isinstance(result, dict) and "generated_text" in result:
+                return result["generated_text"].strip()
+            elif isinstance(result, list) and "generated_text" in result[0]:
+                return result[0]["generated_text"].strip()
+        except Exception:
+            return None
+    return None
+
+
+
+# MAIN LOOP
+# MAIN LOOP
+if __name__ == "__main__":
+    print("\033[93m🌍 Welcome to the AI Weather Chatbot! Type 'exit' to quit.\033[0m\n")
+
+    while True:
+        user_query = input(" Ask me any weather questions! Type 'suggest' if you need ideas:  ").strip()
+
+        if user_query.lower() == "exit" or user_query == "退出":
+            print("\033[91m👋 Goodbye!\033[0m" if detect_language(user_query) == "en" else "\033[91m👋 再见！\033[0m")
+            break
+
+        # Show examples if user wants suggestions
+        if user_query.lower() == "suggest" or user_query == "建议":
+            print("\n\033[92m🧠 Example Questions:")
+            print("Q: 今天伦敦天气如何？")
+            print("A: 今天伦敦的天气是晴朗，温度大约是10.1°C。\n")
+            print("Q: Should I fly a kite in Manchester today?")
+            print("A: Yes, you can fly a kite in Manchester today. The weather is clear with wind speed at 17.3 kph.\n")
+            print("Q: 我今天应该在曼切斯特穿什么鞋子出门？靴子还是运动鞋？")
+            print("A: 今天曼切斯特天气很好，你应该穿运动鞋出门, 现在的天气是晴朗，温度大约是11.4°C。\n")
+            print("Q: Will the weather in Manchester become sunny today?")
+            print("A: Yes, it will. The temperature is around 7.2°C.\033[0m\n")
+            continue
+
+        lang = detect_language(user_query)
+        city_en, city_display = extract_city(user_query, lang)
+        if not city_en:
+            print("\033[91m⚠️ Unable to detect city.\033[0m" if lang == "en" else "\033[91m⚠️ 无法识别城市。\033[0m")
+            continue
+
+        day = get_requested_day(user_query, lang)
+        day_str = "今天" if lang == "zh" and day == "today" else "明天" if lang == "zh" else "today" if day == "today" else "tomorrow"
+        forecast_data = get_forecast(city_en, day == "today")
+        if "error" in forecast_data:
+            print("\033[91m⚠️", forecast_data["error"], "\033[0m")
+            continue
+
+        if is_hiking_question(user_query):
+            response = handle_hiking_question(forecast_data, lang, day_str, city_display)
+        elif is_kite_flying_question(user_query):
+            response = handle_kite_flying_question(forecast_data, lang, day_str, city_display)
+        elif is_shoe_question(user_query):
+            response = handle_shoe_question(forecast_data, lang, day_str, city_display)
+        elif is_yes_no_sunny_question(user_query):
+            response = handle_yes_no_sunny(forecast_data, lang, day == "today")
+        else:
+            response = "对不起，我暂时无法理解你的问题。" if lang == "zh" else "Sorry, I couldn't understand your question."
+
+        print(f"\n\033[94m🤖 {response}\033[0m")
+        print("\n\033[93m🔄 Ask another question or type 'exit' to quit.\033[0m\n")
